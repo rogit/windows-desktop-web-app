@@ -8,6 +8,7 @@
 #include <shellapi.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #include <time.h>
 #include <io.h>
 
@@ -15,7 +16,7 @@
 BOOLEAN WINAPI RtlGenRandom ( PVOID, ULONG );
 
 #define BYTES_TO_READ_FROM_WEB_SERVER 1024
-#define MAX_BYTES_TO_READ_FROM_WEB_SERVER BYTES_TO_READ_FROM_WEB_SERVER * 10
+#define MAX_BYTES_TO_READ_FROM_WEB_SERVER (BYTES_TO_READ_FROM_WEB_SERVER * 10)
 #define START_BUFFER_MAX 2048
 #define ONE_MAX_READ 80
 #define TOTAL_MAX_READ 512
@@ -70,8 +71,8 @@ BOOL startJob ( JobT * );
 void freeOutput ( JobT * );
 void hSendJobStatus ( JobT * );
 void hLogWebServer ( JobT * );
-void Debug ( char * );
-void Log ( char *, BOOL );
+void Debug ( const char * );
+void Log ( const char *, BOOL );
 void setWebLastRequestTime ( void );
 BOOL pingPort ( unsigned int );
 void terminateJob ( JobT * );
@@ -191,9 +192,8 @@ void waitForJobs ( void ) {
 }
 
 char * bin2hex ( unsigned char * str, unsigned int l ) {
-	unsigned int i = 0;
 	char * res = malloc ( l * 2 + 1 );
-	for ( i = 0; i < l; i++ ) sprintf ( res + i*2, "%02x",  str[i] );
+	for ( unsigned int i = 0; i < l; i++ ) sprintf ( res + i*2, "%02x",  str[i] );
 	return res;
 }
 
@@ -296,13 +296,13 @@ DWORD WINAPI controlJob ( JobT * job ) {
 }
 
 BOOL pingPort ( unsigned int PORT ) {
-	WSADATA wsadata;
+	WSADATA wsaData;
 	SOCKET sck;
 	struct sockaddr_in sinRemote;
 	struct hostent * HostAddress;
 	int ret_val;
 
-	WSAStartup ( 0x101, &wsadata );
+	WSAStartup ( 0x101, &wsaData );
 	HostAddress = gethostbyname ( "127.0.0.1" );
 	if ( HostAddress == NULL ) return FALSE;
 	sck = socket ( AF_INET, SOCK_STREAM, 0 );
@@ -424,7 +424,7 @@ char * sendHttpRequest ( const char * method, char * url, char * post_data ) {
 		Log ( "InternetConnect", TRUE );
 		InternetCloseHandle ( hInternet );
 		return NULL;
-	};
+	}
 
 	hReq = HttpOpenRequest ( hConnect, method, url, "HTTP/1.0", NULL, 0, INTERNET_FLAG_RELOAD | INTERNET_FLAG_KEEP_CONNECTION | INTERNET_FLAG_NO_CACHE_WRITE, 0 );
 	if ( hReq == NULL ) {
@@ -432,7 +432,7 @@ char * sendHttpRequest ( const char * method, char * url, char * post_data ) {
 		InternetCloseHandle ( hConnect );
 		InternetCloseHandle ( hInternet );
 		return NULL;
-	};
+	}
 
 	if ( !HttpSendRequest ( hReq, headers, strlen(headers), post_data, strlen ( post_data ))) {
 		Log ( "HttpSendRequest", TRUE );
@@ -456,7 +456,7 @@ char * sendHttpRequest ( const char * method, char * url, char * post_data ) {
 		}
 		totalRead += bytesRead;
 		if ( totalRead + bytesRead >= MAX_BYTES_TO_READ_FROM_WEB_SERVER ) break;
-	};
+	}
 
 	HTMLBuffer[totalRead] = 0;
 	InternetCloseHandle ( hReq );
@@ -465,50 +465,16 @@ char * sendHttpRequest ( const char * method, char * url, char * post_data ) {
 	return HTMLBuffer;
 }
 
-char * hex2bin ( char * str ) {
-	long l, j;
-	char * res;
-
-	j = strlen ( str );
-	if ( j < 2 ) return NULL;
-	if ( j % 2 != 0 ) return NULL;
-	l = j >> 1;
-	res = malloc ( l + 1 );
-
-	res[l] = 0;
-	while ( --l >= 0 ) {
-		j = l << 1;
-		if (( str[j] >= '0' ) && ( str[j] <= '9' )) res[l] = ( str[j] - '0' ) << 4;
-		else {
-			if (( str[j] >= 'a' ) && ( str[j] <= 'f' )) res[l] = ( str[j] - 'a' + 10 ) << 4;
-			else {
-				free ( res );
-				return NULL;
-			}
-		}
-		j++;
-		if (( str[j] >= '0' ) && ( str[j] <= '9' )) res[l] += ( str[j] - '0' );
-		else {
-			if (( str[j] >= 'a' ) && ( str[j] <= 'f' )) res[l] += ( str[j] - 'a'+ 10 );
-			else {
-				free ( res );
-				return NULL;
-			}
-		}
-	}
-	return res;
-}
-
 BOOL FileExists ( const char * FilePath ) {
 	struct stat FileInfo;
 	return ( stat ( FilePath, &FileInfo ) != -1 );
 }
 
-void Debug ( char * text ) {
+void Debug ( const char * text ) {
 	if ( DEBUG ) Log ( text, TRUE );
 }
 
-void Log ( char * text, BOOL ownLog ) {
+void Log ( const char * text, BOOL ownLog ) {
 	FILE * LogFile;
 
 	if (( !_logging ) || ( !LOGGING )) return;
@@ -540,12 +506,12 @@ BOOL webIsNotRequested ( void ) {
 
 BOOL openBrowser ( void ) {
 	char str[32];
-	int ret;
+	HINSTANCE ret;
 	sprintf ( str, "http://localhost:%d", PORT_WEB );
-	ret = (int) ShellExecute ( NULL, "open", str, NULL, NULL, SW_SHOWNORMAL );
-	sprintf ( str, "ShellExecute ret %d", ret );
+	ret = ShellExecute ( NULL, "open", str, NULL, NULL, SW_SHOWNORMAL );
+	sprintf ( str, "ShellExecute ret %d", (int)ret);
 	Debug ( str );
-	return ret > 32;
+	return ret > (HINSTANCE)32;
 }
 
 BOOL checkRequiredFiles ( void ) {
@@ -601,7 +567,7 @@ JobT * startWebServer ( void ) {
 	return job;
 }
 
-BOOL alreadRunning ( void ) {
+BOOL isAlreadyRunning ( void ) {
 	FILE * fp;
 	char * response;
 	unsigned int instance_present, instance_running;
@@ -670,18 +636,18 @@ void getConfigParameters ( void ) {
 	MAX_JOBS = GetPrivateProfileInt ( "job", "max_jobs", 1000, SETTINGS_FILE );
 }
 
-void Ret200 ( SOCKET msgsock ) {
+void Ret200 ( SOCKET sck ) {
 	char * answer = "HTTP/1.1 200 OK\nContent-Type: text/html\nContent-Length: 0";
-	send ( msgsock, answer, strlen ( answer ), 0 );
-	shutdown ( msgsock, SD_BOTH );
-	closesocket ( msgsock );
+	send ( sck, answer, strlen ( answer ), 0 );
+	shutdown ( sck, SD_BOTH );
+	closesocket ( sck );
 }
 
-void Ret400 ( SOCKET msgsock ) {
+void Ret400 ( SOCKET sck ) {
 	char * answer = "HTTP/1.1 400 Bad Request\nContent-Type: text/html\nContent-Length: 0";
-	send ( msgsock, answer, strlen ( answer ), 0 );
-	shutdown ( msgsock, SD_BOTH );
-	closesocket ( msgsock );
+	send ( sck, answer, strlen ( answer ), 0 );
+	shutdown ( sck, SD_BOTH );
+	closesocket ( sck );
 }
 
 char * parseQuery ( char * name, char * requestBuffer ) {
@@ -710,7 +676,7 @@ char * parseQuery ( char * name, char * requestBuffer ) {
 		}
 		i++;
 		j++;
-	};
+	}
 	if ( j == 0 ) {
 		free ( res );
 		return NULL;
@@ -719,37 +685,37 @@ char * parseQuery ( char * name, char * requestBuffer ) {
 	return res;
 }
 
-void WINAPI handleConnection ( SOCKET msgsock ) {
+void WINAPI handleConnection ( SOCKET sck ) {
 	char requestBuffer[HTTP_REQUEST_MAX_SIZE+1];
-	char * contentStart, * jobId, * jobCmd, * secretRecv;
+	char * contentStart, * jobId, * jobCmd, * secretReceived;
 	unsigned int contentLength = 0;
-	int retval, receivedSize = 0;
+	int ret, receivedSize = 0;
 
 	memset ( requestBuffer, 0, HTTP_REQUEST_MAX_SIZE+1 );
-	retval = recv ( msgsock, requestBuffer, HTTP_REQUEST_MAX_SIZE, 0 );
-	if (( retval == SOCKET_ERROR) || ( retval == 0 )) {
-		shutdown ( msgsock, SD_BOTH );
-		closesocket ( msgsock );
+	ret = recv ( sck, requestBuffer, HTTP_REQUEST_MAX_SIZE, 0 );
+	if (( ret == SOCKET_ERROR) || ( ret == 0 )) {
+		shutdown ( sck, SD_BOTH );
+		closesocket ( sck );
 		return;
 	}
 
 	if ( strstr ( requestBuffer, "POST" ) != requestBuffer ) {
-		shutdown ( msgsock, SD_BOTH );
-		closesocket ( msgsock );
+		shutdown ( sck, SD_BOTH );
+		closesocket ( sck );
 		return;
 	}
 
 	if ( strstr ( requestBuffer, "Content-Length: " ) == NULL ) {
-		shutdown ( msgsock, SD_BOTH );
-		closesocket ( msgsock );
+		shutdown ( sck, SD_BOTH );
+		closesocket ( sck );
 		return;
 	}
 
 	contentLength = atoi ( strstr ( requestBuffer, "Content-Length: " ) + strlen ( "Content-Length: " ));
 	contentStart = strstr ( requestBuffer, "\r\n\r\n" );
 	if ( contentStart == NULL ) {
-		shutdown ( msgsock, SD_BOTH );
-		closesocket ( msgsock );
+		shutdown ( sck, SD_BOTH );
+		closesocket ( sck );
 		return;
 	}
 	contentStart += 4;
@@ -758,10 +724,10 @@ void WINAPI handleConnection ( SOCKET msgsock ) {
 	requestBuffer[receivedSize] = 0;
 
 	while ( receivedSize < contentLength ){
-			retval = recv ( msgsock, requestBuffer+receivedSize, HTTP_REQUEST_MAX_SIZE-receivedSize, 0 );
-			if (( retval == SOCKET_ERROR) || ( retval == 0 )) {
-				shutdown ( msgsock, SD_BOTH );
-				closesocket ( msgsock );
+			ret = recv ( sck, requestBuffer+receivedSize, HTTP_REQUEST_MAX_SIZE-receivedSize, 0 );
+			if (( ret == SOCKET_ERROR) || ( ret == 0 )) {
+				shutdown ( sck, SD_BOTH );
+				closesocket ( sck );
 				return;
 			}
 			receivedSize += strlen ( requestBuffer+receivedSize );
@@ -771,42 +737,41 @@ void WINAPI handleConnection ( SOCKET msgsock ) {
 
 	jobId = parseQuery ( "jobId=", requestBuffer );
 	if ( jobId == NULL ) {
-		Ret400 ( msgsock );
+		Ret400 ( sck );
 		return;
 	}
 	jobCmd = parseQuery ( "jobCmd=", requestBuffer );
 	if ( jobCmd == NULL ) {
 		free ( jobId );
-		Ret400 ( msgsock );
+		Ret400 ( sck );
 		return;
 	}
-	secretRecv = parseQuery ( "secret=", requestBuffer );
-	if ( secretRecv == NULL ) {
+	secretReceived = parseQuery ("secret=", requestBuffer );
+	if (secretReceived == NULL ) {
 		free ( jobId );
 		free ( jobCmd );
-		Ret400 ( msgsock );
+		Ret400 ( sck );
 		return;
 	}
-	if ( strcmp ( SECRET, secretRecv ) != 0 ) {
+	if (strcmp (SECRET, secretReceived ) != 0 ) {
 		free ( jobId );
 		free ( jobCmd );
-		free ( secretRecv );
-		Ret400 ( msgsock );
+		free (secretReceived );
+		Ret400 ( sck );
 		return;
 	}
-	Ret200 ( msgsock );
-	free ( secretRecv );
+	Ret200 ( sck );
+	free (secretReceived );
 	addJob ( jobId, jobCmd, TRUE, hSendJobStatus );
 	free ( jobId );
 	free ( jobCmd );
 }
 
 void WINAPI listeningThread ( void ) {
-	int fromlen, socket_type = SOCK_STREAM;
+	int fromLength, socket_type = SOCK_STREAM;
 	struct sockaddr_in local, from;
 	WSADATA wsaData;
-	SOCKET listen_socket, msgsock;
-	HANDLE handle;
+	SOCKET listen_socket, sck;
 
 	if ( WSAStartup ( 0x202, &wsaData ) == SOCKET_ERROR ) {
 		Log ( "WSAStartup failed", TRUE );
@@ -838,16 +803,16 @@ void WINAPI listeningThread ( void ) {
 	}
 
 	while ( TRUE ) {
-		fromlen = sizeof ( from );
-		msgsock = accept ( listen_socket, (struct sockaddr*) &from, &fromlen );
+		fromLength = sizeof ( from );
+		sck = accept ( listen_socket, (struct sockaddr*) &from, &fromLength );
 
-		if ( msgsock == INVALID_SOCKET ) {
+		if ( sck == INVALID_SOCKET ) {
 			Log ( "accept() failed", TRUE );
 			WSACleanup();
 			exit ( 1 );
 		}
 
-		if (( handle = CreateThread ( 0, 0, (void*) handleConnection, (void*)msgsock, 0, NULL )) == NULL) {
+		if (CreateThread ( 0, 0, (void*) handleConnection, (void*)sck, 0, NULL ) == NULL) {
 			Log ( "Failed to create new thread", TRUE );
 			exit ( 1 );
 		}
@@ -878,7 +843,8 @@ void exitAndClean ( int retCode ) {
 }
 
 char * genRandomString ( unsigned int l ) {
-	unsigned char * str, * res;
+	unsigned char * str;
+	char * res;
 	str = malloc ( l );
 	RtlGenRandom ( str, l );
 	res = bin2hex ( str, l );
@@ -893,7 +859,7 @@ int main ( void ) {
 
 	getConfigParameters ();
 	if ( !checkRequiredFiles ()) return 1;
-	if ( alreadRunning ()) return !openBrowser ();
+	if (isAlreadyRunning()) return !openBrowser ();
 	setPortWeb ();
 	setPortInter ();
 	_logging = TRUE;
@@ -922,7 +888,7 @@ int main ( void ) {
 		Log ( "Failed to start default web browser", TRUE );
 		MessageBox ( NULL, "Failed to start default web browser", "Error", MB_ICONSTOP );
 		exitAndClean ( 3 );
-	};
+	}
 	Debug ( "Starting waitForJobs" );
 	waitForJobs ();
 	DeleteCriticalSection ( &jobs->cs );
